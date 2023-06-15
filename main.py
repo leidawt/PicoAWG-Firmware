@@ -130,7 +130,7 @@ def setupwave(buf, f, w):
         w.amplitude = 0.5
         w.offset = 0
     elif w.amplitude <= 0.2:
-        if w.offset==0:
+        if w.offset == 0:
             dac904_bias.duty_u16(6554)
             w.amplitude = w.amplitude/0.2*0.5
         else:
@@ -191,12 +191,12 @@ def sine(x, pars):
 
 def pulse(x, pars):  # risetime,uptime,falltime
     if x < pars[0]:
-        return x/pars[0]
+        return -1+2*x/pars[0]
     if x < pars[0]+pars[1]:
         return 1.0
     if x < pars[0]+pars[1]+pars[2]:
-        return 1.0-(x-pars[0]-pars[1])/pars[2]
-    return 0.0
+        return -1+2*(1.0-(x-pars[0]-pars[1])/pars[2])
+    return -1
 
 
 def gaussian(x, pars):
@@ -226,12 +226,42 @@ class wave:
 
 
 wave1 = wave()
+wave1.replicate = 1
+wave1.phase = 0.0
+
+# sine
+wave1.func = sine
 wave1.amplitude = 0.5  # Vpp
 wave1.offset = 0.0  # DC bias(V)
-wave1.phase = 0.0
-wave1.replicate = 1
-wave1.func = sine
 wave1.pars = []
+
+# white noise
+# wave1.func = noise
+# wave1.amplitude = 1
+# wave1.offset = 0
+# wave1.pars = [1]
+
+# sinc
+# wave1.func = sinc
+# wave1.amplitude = 0.5
+# wave1.offset = 0
+# wave1.pars = [0.01]
+
+# pulse
+# wave1.func = pulse
+# wave1.amplitude = 1.0
+# wave1.offset = 0.0
+# # risetime(percent),uptime(percent),falltime(percent)
+# # sum(risetime,uptime,falltime) should be 1
+# wave1.pars = [0.1, 0.8, 0.1]
+
+# triginal(special case of pulse)
+# wave1.func = pulse
+# wave1.amplitude = 1.0
+# wave1.offset = 0.0
+# # risetime(percent),uptime(percent),falltime(percent)
+# # sum(risetime,uptime,falltime) should be 1
+# wave1.pars = [0.5, 0, 0.5]
 
 setupwave(wavbuf[ibuf], 1e5, wave1)
 ibuf = (ibuf+1) % 2
