@@ -34,27 +34,27 @@ machine.freq(fclock)
 
 # set default DAC current to 10mA
 dac904_bias = PWM(Pin(14))
-dac904_bias.freq(1000000)
+dac904_bias.freq(100000)
 dac904_bias.duty_u16(32768)
 
 # state machine that just pushes bytes to the pins
 
 
 @asm_pio(sideset_init=(PIO.OUT_HIGH,),
-         out_init=(PIO.OUT_HIGH,)*8,
+         out_init=(PIO.OUT_HIGH,)*14,
          out_shiftdir=PIO.SHIFT_RIGHT,
          fifo_join=PIO.JOIN_TX,
          autopull=True,
-         pull_thresh=32)
+         pull_thresh=28)
 def stream():
     wrap_target()
-    out(pins, 8) .side(0)
+    out(pins, 14) .side(0)
     nop() 		.side(1)
     wrap()
 
 
 sm = StateMachine(0, stream, freq=fclock,
-                  sideset_base=Pin(15), out_base=Pin(6))
+                  sideset_base=Pin(15), out_base=Pin(0))
 sm.active(1)
 
 # 2-channel chained DMA. channel 0 does the transfer, channel 1 reconfigures
@@ -115,8 +115,19 @@ def setupwave(buf, f, w):
         dup = 1
 
     # fill the buffer
-    for isamp in range(nsamp):
-        buf[isamp] = max(0, min(255, int(256*eval(w, dup*(isamp+0.5)/nsamp))))
+    # for isamp in range(nsamp):
+    #     buf[isamp] = max(0, min(255, int(255*eval(w, dup*(isamp+0.5)/nsamp))))
+
+    print([dup,clkdiv,nsamp,int(nsamp/2)])
+    for iword in range(int(nsamp/2)):
+        val1 = int(16383*eval(w, dup*(iword*2+0)/nsamp))
+        val2 = int(16383*eval(w, dup*(iword*2+1)/nsamp))
+        word = val1 + (val2 << 14)
+        buf[iword*4+0] = (word & (255 << 0)) >> 0
+        buf[iword*4+1] = (word & (255 << 8)) >> 8
+        buf[iword*4+2] = (word & (255 << 16)) >> 16
+        buf[iword*4+3] = (word & (255 << 24)) >> 24
+
 
     # set the clock divider
     clkdiv_int = min(clkdiv, 65535)
@@ -124,7 +135,7 @@ def setupwave(buf, f, w):
     mem32[PIO0_SM0_CLKDIV] = (clkdiv_int << 16) | (clkdiv_frac << 8)
 
     # start DMA
-    startDMA(buf, int(nsamp/4))
+    startDMA(buf, int(nsamp/2))
 
 
 # evaluate the content of a wave
@@ -183,8 +194,8 @@ def noise(x, pars):  # p0=quality: 1=uniform >10=gaussian
 # large buffers give better results but are slower to fill
 maxnsamp = 4096  # must be a multiple of 4. miximum size is 65536
 wavbuf = {}
-wavbuf[0] = bytearray(maxnsamp)
-wavbuf[1] = bytearray(maxnsamp)
+wavbuf[0] = bytearray(maxnsamp*4)
+wavbuf[1] = bytearray(maxnsamp*4)
 ibuf = 0
 
 # empty class just to attach properties to
