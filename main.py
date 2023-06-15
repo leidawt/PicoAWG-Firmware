@@ -124,6 +124,24 @@ def setupwave(buf, f, w):
         clkdiv = int(div)+1
         nsamp = int((maxnsamp*div/clkdiv+0.5)/4)*4  # force multiple of 4
         dup = 1
+    # gain set
+    if w.amplitude >= 2:
+        dac904_bias.duty_u16(65535)
+        w.amplitude = 0.5
+        w.offset = 0
+    elif w.amplitude <= 0.2:
+        if w.offset==0:
+            dac904_bias.duty_u16(6554)
+            w.amplitude = w.amplitude/0.2*0.5
+        else:
+            dac904_bias.duty_u16(65535)
+            w.amplitude = w.amplitude/2*0.5
+            w.offset = w.offset/2
+    else:
+        k = 1-w.offset/w.amplitude
+        dac904_bias.duty_u16(int(w.amplitude/2/k*65535))
+        w.amplitude = 0.5*k
+        w.offset = 0.5-0.5*k
 
     # fill the buffer
     # for isamp in range(nsamp):
@@ -131,14 +149,14 @@ def setupwave(buf, f, w):
 
     # print([dup, clkdiv, nsamp, int(nsamp/2)])
     for iword in range(int(nsamp/2)):
-        val1 = int(16383*eval(w, dup*(iword*2+0)/nsamp))
-        val2 = int(16383*eval(w, dup*(iword*2+1)/nsamp))
+        val1 = int(16383*eval(w, dup*(iword*2+0)/nsamp))+8192
+        val2 = int(16383*eval(w, dup*(iword*2+1)/nsamp))+8192
+
         word = val1 + (val2 << 14)
         buf[iword*4+0] = (word & (255 << 0)) >> 0
         buf[iword*4+1] = (word & (255 << 8)) >> 8
         buf[iword*4+2] = (word & (255 << 16)) >> 16
         buf[iword*4+3] = (word & (255 << 24)) >> 24
-
     # set the clock divider
     clkdiv_int = min(clkdiv, 65535)
     clkdiv_frac = 0  # fractional clock division results in jitter
@@ -208,8 +226,8 @@ class wave:
 
 
 wave1 = wave()
-wave1.amplitude = 0.5
-wave1.offset = 0.5
+wave1.amplitude = 0.5  # Vpp
+wave1.offset = 0.0  # DC bias(V)
 wave1.phase = 0.0
 wave1.replicate = 1
 wave1.func = sine
