@@ -1,33 +1,44 @@
-# Arbitrary waveform generator for Rasberry Pi Pico
-# Requires 8-bit R2R DAC on pins 0-7. Works for R=1kOhm
-# Achieves 125Msps when running 125MHz clock
-# Rolf Oldeman, 13/2/2021. CC BY-NC-SA 4.0 licence
-# tested with rp2-pico-20210205-unstable-v1.14-8-g1f800cac3.uf2
+# PicoAWG v1.0
+# ref: Rolf Oldeman's Arbitrary waveform generator
+# https://www.instructables.com/Arbitrary-Wave-Generator-With-the-Raspberry-Pi-Pic/
+# tested with rp2-pico-20230426-v1.20.0.uf2
+
 from machine import Pin, mem32, PWM
 from rp2 import PIO, StateMachine, asm_pio
 from array import array
-from utime import sleep
 from math import pi, sin, exp, sqrt, floor
 from uctypes import addressof
 from random import random
+from micropython import const
+#################################SETTINGS#######################################
 
-fclock = 250000000  # clock frequency of the pico
+fclock = const(250000000)  # clock frequency of the pico
+dac_clock = int(fclock/2)
+# make buffers for the waveform.
+# large buffers give better results but are slower to fill
+maxnsamp = const(4096)  # must be a multiple of 4. miximum size is 65536
+wavbuf = {}
+wavbuf[0] = bytearray(maxnsamp*4)
+wavbuf[1] = bytearray(maxnsamp*4)
+ibuf = 0
+################################################################################
 
-DMA_BASE = 0x50000000
-CH0_READ_ADDR = DMA_BASE+0x000
-CH0_WRITE_ADDR = DMA_BASE+0x004
-CH0_TRANS_COUNT = DMA_BASE+0x008
-CH0_CTRL_TRIG = DMA_BASE+0x00c
-CH0_AL1_CTRL = DMA_BASE+0x010
-CH1_READ_ADDR = DMA_BASE+0x040
-CH1_WRITE_ADDR = DMA_BASE+0x044
-CH1_TRANS_COUNT = DMA_BASE+0x048
-CH1_CTRL_TRIG = DMA_BASE+0x04c
-CH1_AL1_CTRL = DMA_BASE+0x050
 
-PIO0_BASE = 0x50200000
-PIO0_TXF0 = PIO0_BASE+0x10
-PIO0_SM0_CLKDIV = PIO0_BASE+0xc8
+DMA_BASE = const(0x50000000)
+CH0_READ_ADDR = const(DMA_BASE+0x000)
+CH0_WRITE_ADDR = const(DMA_BASE+0x004)
+CH0_TRANS_COUNT = const(DMA_BASE+0x008)
+CH0_CTRL_TRIG = const(DMA_BASE+0x00c)
+CH0_AL1_CTRL = const(DMA_BASE+0x010)
+CH1_READ_ADDR = const(DMA_BASE+0x040)
+CH1_WRITE_ADDR = const(DMA_BASE+0x044)
+CH1_TRANS_COUNT = const(DMA_BASE+0x048)
+CH1_CTRL_TRIG = const(DMA_BASE+0x04c)
+CH1_AL1_CTRL = const(DMA_BASE+0x050)
+
+PIO0_BASE = const(0x50200000)
+PIO0_TXF0 = const(PIO0_BASE+0x10)
+PIO0_SM0_CLKDIV = const(PIO0_BASE+0xc8)
 
 # set desired clock frequency
 machine.freq(fclock)
@@ -104,7 +115,7 @@ def startDMA(ar, nword):
 
 def setupwave(buf, f, w):
     # required clock division for maximum buffer size
-    div = fclock/(f*maxnsamp)
+    div = dac_clock/(f*maxnsamp)
     if div < 1.0:  # can't speed up clock, duplicate wave instead
         dup = int(1.0/div)
         nsamp = int((maxnsamp*div*dup+0.5)/4)*4  # force multiple of 4
@@ -118,7 +129,7 @@ def setupwave(buf, f, w):
     # for isamp in range(nsamp):
     #     buf[isamp] = max(0, min(255, int(255*eval(w, dup*(isamp+0.5)/nsamp))))
 
-    print([dup,clkdiv,nsamp,int(nsamp/2)])
+    # print([dup, clkdiv, nsamp, int(nsamp/2)])
     for iword in range(int(nsamp/2)):
         val1 = int(16383*eval(w, dup*(iword*2+0)/nsamp))
         val2 = int(16383*eval(w, dup*(iword*2+1)/nsamp))
@@ -127,7 +138,6 @@ def setupwave(buf, f, w):
         buf[iword*4+1] = (word & (255 << 8)) >> 8
         buf[iword*4+2] = (word & (255 << 16)) >> 16
         buf[iword*4+3] = (word & (255 << 24)) >> 24
-
 
     # set the clock divider
     clkdiv_int = min(clkdiv, 65535)
@@ -190,14 +200,6 @@ def noise(x, pars):  # p0=quality: 1=uniform >10=gaussian
     return sum([random()-0.5 for _ in range(pars[0])])*sqrt(12/pars[0])
 
 
-# make buffers for the waveform.
-# large buffers give better results but are slower to fill
-maxnsamp = 4096  # must be a multiple of 4. miximum size is 65536
-wavbuf = {}
-wavbuf[0] = bytearray(maxnsamp*4)
-wavbuf[1] = bytearray(maxnsamp*4)
-ibuf = 0
-
 # empty class just to attach properties to
 
 
@@ -214,3 +216,4 @@ wave1.func = sine
 wave1.pars = []
 
 setupwave(wavbuf[ibuf], 1e5, wave1)
+ibuf = (ibuf+1) % 2
