@@ -18,9 +18,10 @@ dac_clock = int(fclock/2)
 # large buffers give better results but are slower to fill
 maxnsamp = const(4096)  # must be a multiple of 4. miximum size is 65536
 wavbuf = {}
-wavbuf[0] = bytearray(maxnsamp*4)
-wavbuf[1] = bytearray(maxnsamp*4)
+wavbuf[0] = bytearray(maxnsamp*2)
+wavbuf[1] = bytearray(maxnsamp*2)
 ibuf = 0
+temp = None
 ################################################################################
 
 
@@ -148,15 +149,16 @@ def setupwave(buf, f, w):
     #     buf[isamp] = max(0, min(255, int(255*eval(w, dup*(isamp+0.5)/nsamp))))
 
     # print([dup, clkdiv, nsamp, int(nsamp/2)])
-    for iword in range(int(nsamp/2)):
-        val1 = int(16383*eval(w, dup*(iword*2+0)/nsamp))+8192
-        val2 = int(16383*eval(w, dup*(iword*2+1)/nsamp))+8192
+    if w.func is not None:
+        for iword in range(int(nsamp/2)):
+            val1 = int(16383*eval(w, dup*(iword*2+0)/nsamp))+8192
+            val2 = int(16383*eval(w, dup*(iword*2+1)/nsamp))+8192
 
-        word = val1 + (val2 << 14)
-        buf[iword*4+0] = (word & (255 << 0)) >> 0
-        buf[iword*4+1] = (word & (255 << 8)) >> 8
-        buf[iword*4+2] = (word & (255 << 16)) >> 16
-        buf[iword*4+3] = (word & (255 << 24)) >> 24
+            word = val1 + (val2 << 14)
+            buf[iword*4+0] = (word & (255 << 0)) >> 0
+            buf[iword*4+1] = (word & (255 << 8)) >> 8
+            buf[iword*4+2] = (word & (255 << 16)) >> 16
+            buf[iword*4+3] = (word & (255 << 24)) >> 24
     # set the clock divider
     clkdiv_int = min(clkdiv, 65535)
     clkdiv_frac = 0  # fractional clock division results in jitter
@@ -223,6 +225,11 @@ def noise(x, pars):  # p0=quality: 1=uniform >10=gaussian
 
 class wave:
     pass
+
+
+def data_mov(start, num):
+    for i in range(start, start+num):
+        wavbuf[ibuf][i] = temp[i-start]
 
 
 wave1 = wave()
